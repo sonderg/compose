@@ -1,0 +1,885 @@
+\documentclass{llncs}
+
+\usepackage{verbatim}
+\usepackage{pstricks,pst-node,pst-tree}
+\newpsobject{showgrid}{psgrid}{subgriddiv=1,griddots=10,gridlabels=6pt}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{xspace}
+
+\newcommand{\mybacks}{\char'134}        % Backslant 
+\newcommand{\mycaret}{\char'136}        % Caret 
+\newcommand{\mytilde}{\char'176}        % Tilde 
+
+\newcommand{\fun}{\rightarrow}
+\newcommand{\id}[1]{\mbox{\textit{#1}}}
+\newcommand{\invis}[1]{\phantom{#1}}
+\newcommand{\pset}[1]{{\cal P}(#1)}
+\newcommand{\derives}{\stackrel{*}{\Rightarrow}}
+\newcommand{\ceil}[1]{\lceil #1 \rceil}
+\newcommand{\floor}[1]{\lfloor #1 \rfloor}
+\newcommand{\nn}[1]{\neg#1}
+\newcommand{\false}{\ensuremath{\mathbf{f}}\xspace}
+\newcommand{\true}{\ensuremath{\mathbf{t}}\xspace}
+\newcommand{\impl}{\mathbin{\Rightarrow}}
+\newcommand{\biim}{\mathbin{\Leftrightarrow}}
+\newcommand{\nat}{\mathbb{N}}
+\newcommand{\intg}{\mathbb{Z}}
+\newcommand{\rational}{\mathbb{Q}}
+\newcommand{\real}{\mathbb{R}}
+\newcommand{\Bool}{\mathbf{2}}
+\newcommand{\Tri}{\mathbf{3}}
+\newcommand{\Quad}{\mathbf{4}}
+\newcommand{\Id}{\mathbf{Id}}
+\newcommand{\Val}{\mathbf{Val}}
+\newcommand{\Pred}{\mathbf{Pred}}
+\newcommand{\Env}{\mathbf{Env}}
+\newcommand{\Her}{\mathbf{Her}}
+\newcommand{\lfp}{\mathbf{lfp}}
+\newcommand{\gfp}{\mathbf{gfp}}
+
+\def\mybool		{\mathbb{B}_{\mathbf{X} \cup \mathbf{X}'}}
+\def\myhalfbool		{\mathbb{B}_{\mathbf{X}}}
+
+\newcommand{\set}[1]{\left\{
+    \begin{array}{l}#1
+    \end{array}
+  \right\}}
+
+\newcommand{\sset}[2]{\left\{~#1 \left|
+      \begin{array}{l}#2\end{array}
+    \right.     \right\}}
+
+\def\lbag     	{\lbrack\!\lbrack}
+\def\rbag      	{\rbrack\!\rbrack}
+\def\lquote     {[\![}
+\def\rquote     {]\!]}
+\def\dlangle    {\langle\!\langle}
+\def\drangle    {\rangle\!\rangle}
+\newcommand{\qquote}[1]{\lquote #1 \rquote}
+\newcommand{\tuple}[1]{\ensuremath{\langle #1 \rangle}}
+
+\newcommand{\ignore}[1]{}
+
+\begin{document}
+
+\title%
+{Equational Reasoning and Intended Semantics in Functional Programming}
+\pagestyle{plain}
+
+\author{Lee Naish\inst{1} \and 
+Bernard Pope\inst{1} \and 
+Harald S{\o}ndergaard\inst{1}
+}
+
+\institute{The University of Melbourne, Victoria 3010, Australia}
+
+\maketitle
+
+\begin{abstract}
+A major advantage of functional programming languages is that they 
+allow for analysis and transformation based on ``equational reasoning'';
+an idea that has deep roots in computing history. 
+In his seminal Turing Award lecture from 1977, John Backus advocated 
+the functional style over traditional ``von Neumann'' languages, 
+citing algebraic program manipulation as a major selling point. 
+Similar ideas were further expanded in the Bird-Meertens formalism, 
+fondly known as ``squiggol'', yielding an elegant calculus for 
+iterative program construction. 
+The use of simple equational laws is very attractive, 
+even if the presence of "undefined" values sometimes violate such laws: 
+Danielsson et al.\ have shown that, in a precise sense, equational 
+reasoning is still justified. 
+In their words, ``fast and loose reasoning is morally correct.''
+
+There are, however, circumstances where programmer intent needs to be 
+taken into account. 
+Programmers routinely make tacit assumptions about what may or may 
+not happen when a program runs, making liberal use of deliberate 
+under-specification. 
+For example, when coding a merge function we typically assume the 
+arguments are sorted lists. 
+The under-specification or ``don't care'' status of a computation is 
+best seen as a dual to undefinedness. 
+It can manifest itself during debugging, for example, when a 
+programmer is required to judge the correctness of an expression 
+that violates a precondition (such as merge applied to unsorted lists),
+and therefore has no particular intended meaning.
+
+We argue that, in the context of a ``programmer-intended semantics'' 
+which is usually partial, certain kinds of reasoning with equality 
+are inappropriate and that equality should instead be replaced by a 
+partial ordering of values taking ``don't care'' into account. 
+In our presentation we aim to explain what goes wrong with naive 
+equational reasoning in the presence of under-specification, 
+how it can be adapted to avoid these pitfalls, and the influence 
+on how we think about our code and design programming environments, 
+including tools for testing, debugging and verification.
+\end{abstract}
+
+\section{Introduction}
+
+Functional (or more generally, declarative) programming languages 
+have a distinct advantage over other (dys-functional?) languages.
+The execution of a functional program can be understood as a 
+sequence of rewriting steps, replacing expressions by equivalent
+expressions, and in particular, replacing function calls by
+suitable instances of function bodies.
+Even a sophisticated semantic concept such as call-by-need evaluation
+can be understood in rewriting terms, in this case graph rewriting;
+execution of a program repeatedly replaces sub-graphs with equivalent
+sub-graphs, until some normal form has been reached.
+As a result, reasoning about programs is made easier.
+Program analysis, transformation and verification can be based
+of simple rules for ``equational reasoning''.
+Backus~\cite{xxx} made a strong plea for abandoning ``von Neumann''
+languages in favour of functional languages,
+pointing to compositional, algebraic program manipulation as a major 
+advantage of the latter.
+
+The act of 
+``replacing an expression by an equivalent expression''
+assumes that we know what ``equivalent'' means.
+
+\textbf{%
+[A stretch perhaps, but since Aristotle is 2400 this year and 
+Leibniz passed away 300 years ago in November:]}
+
+Philosophers have traditionally discussed the concept of ``identical''
+in terms of logic.
+Aristotle: 
+Whatever is predicated of the one should be predicated of the other.
+Leibniz: Those are the same that can be substituted for each other,
+while preserving truth.
+
+The use of `='.
+Algebraic laws.
+Recursive definitions and the fact that there is a difference between
+(beta) reduction and equivalence---a direction.
+Examples from Danielsson et al., of simple, obvious equivalences that 
+don't actually hold.
+
+Part of the problem is that, in computer science, 
+we deal with \emph{partial} functions.
+Non-denoting expressions arise in programming
+languages as well as in formalisms for reasoning about programs.
+Non-denotation raises different problems in different settings:
+\begin{itemize}
+\item
+Program specification/refinement
+\item
+Program verification
+\item
+Program transformation
+\item
+Program analysis
+\item
+Declarative debugging
+\end{itemize}
+One way of dealing with non-denoting expressions is to introduce
+three-valued logic.
+
+\textbf{%
+[The rest is from an old draft on many-valued logic, plus some slides 
+that Harald used for a seminar. Can probably all be removed.]}
+
+Three-valued logic has been used to give semantics to logic programs,
+both in the guise of fixed point characterisations, and in the form
+of model theory.
+Fitting~\cite{Fitting:JLP85} for example.
+Fitting later proposed a more general scheme, based on bilattices,
+and in the simplest case, on Belnap's four-valued logic.
+This logic makes use of the truth values $\bot$, $\top$, 0 and 1.
+A natural reading of these values is that they correspond to sets
+of classical truth values: $\bot = \emptyset$,
+$\top = \{\false, \true\}$, $0 = \{\false\}$, and $1 = \{\true\}$.
+We can think of 0 and 1 as \emph{exact} values, of $\bot$ as an
+absence of truth values (a ``gap''), and of $\top$ as an inconsistent
+value (a ``glut'').
+
+Fitting's justification for a fourth truth value is two-fold.
+He considers a setting of distributed computing where different
+machines run separate parts of a program, and queries can be issued
+to the machines as a whole.
+In that setting, four situations may occur.
+There may be consensus amongst the machines, either for answering
+`no', or for answering `yes',
+or there may be a total absence of responses (a ``gap'')
+or there may be disagreement (a ``glut'').
+Four-valued logic is the natural basis for a formalization of how
+the machines should reconcile individual responses and respond as
+a group.
+Thus there is a natural application area for FOUR.
+
+Fitting's other justification is aesthetic.
+It is not uncommon for generalised theories to offer greater
+simplicity.
+This happens with the four-valued approach, which (in Fitting's
+work) allows semi-lattices to be replaced by complete lattices,
+in fact, by \emph{interlaced bi-lattices} that come with a raft
+of useful algebraic properties.
+
+\section{Three-valued logic}
+
+Here is a definition of the factorial function:
+\begin{verbatim}
+    f(x) = if x = 0 then 1 else x * f(x-1)
+\end{verbatim}
+What sort of truth value should we assign to 
+\[
+  x > 3 \impl f(x) > x^2
+\]
+%
+What about
+\[
+  (f(-2) = 6) ~ \lor ~ (f(-2) \not= 6)
+\]
+%
+And what about
+\[
+  (f(-2) = 6) ~ \biim ~ (f(-2) = 6)
+\]
+
+\subsection{Predicates are partial}
+
+Ideally these sorts of formulas should be meaningful:
+\begin{itemize}
+\item
+$\id{xs} \not= [~] \impl \id{head}(\id{xs}) = 42 $
+\item
+$\neg \id{null}(q) \land \id{null}(\id{pop}(q)) $
+\item
+$(0 \leq i \land i < \id{length}(xs)) \impl (xs!!i \leq xs!!(i+1)) $
+\item
+$y \not= 0 \land x/y = z $
+\end{itemize}
+
+\subsection{Different logics for different tasks?}
+
+Suppose $\sqrt{~}$ (or \verb!sqrt!) yields the positive square root of 
+its argument.
+Classically, $\sqrt{x} > 2$ and $x > 4$ are logically equivalent.
+Each model for one is a model for the other.
+But consider:
+\begin{verbatim}
+  h 5
+  where
+    h n = if n > 4 then h (n-6) else n
+\end{verbatim}
+Replacing \verb!n > 4! by \verb!sqrt(n) > 2! changes program behaviour.
+(Actually, not if this is Haskell, because \verb!sqrt(-1)! is \verb!NaN!
+and \verb!NaN > 2! gracefully evaluates to \verb!False!.)
+
+\subsection{Three-valued logics}
+
+Lots of proposals:
+\begin{itemize}
+\item
+    {\L}ukasiewicz 1920~\cite{Luk:RF20}
+\item
+    Kleene 1938~\cite{Kleene38,Kleene52}
+\item
+    McCarthy 1963~\cite{McCarthy:FormalBasis63}
+\item
+    Hoogewijs 1979~\cite{Hoogewijs:ActaInf87}
+\item
+    Barringer et al.~1984 (LPF)~\cite{Barringer:ActaInf84}
+\item
+    Blamey 1986~\cite{Blamey:HPL86}
+\item
+    Blikle 1988~\cite{Blikle:VDM88}
+\item
+    Owe 1993~\cite{Owe:FAC93}
+\item
+    Avron
+\end{itemize}
+%
+
+\subsection{Kleene's logic $K_3$}
+
+\begin{center}
+\begin{tabular}{|c|ccc|}
+\hline
+   $\land$& 0 & 1 & $\bot$
+\\ \hline
+   0      & 0 & 0 & 0
+\\ 1      & 0 & 1 & $\bot$
+\\ $\bot$ & 0 & $\bot$ & $\bot$
+\\ \hline
+\end{tabular}
+\hfil
+\begin{tabular}{|c|ccc|}
+\hline
+   $\lor$ & 0 & 1 & $\bot$
+\\ \hline
+   0      & 0 & 1 & $\bot$
+\\ 1      & 1 & 1 & 1
+\\ $\bot$ & $\bot$ & 1 & $\bot$
+\\ \hline
+\end{tabular}
+\hfil
+\begin{tabular}{|c|c|}
+\hline
+   $\neg$ & 
+\\ \hline
+   0      & 1 
+\\ 1      & 0 
+\\ $\bot$ & $\bot$
+\\ \hline
+\end{tabular}
+\hfil
+\begin{tabular}{|c|ccc|}
+\hline
+   $\impl$ & 0 & 1 & $\bot$
+\\ \hline
+   0      & 1 & 1 & 1
+\\ 1      & 0 & 1 & $\bot$
+\\ $\bot$ & $\bot$ & 1 & $\bot$
+\\ \hline
+\end{tabular}
+\end{center}
+%
+Note that $0 \impl x \equiv 1$, and $0 \land x \equiv 0$,
+even when $x$ is $\bot$.
+
+$K_3$ is sometimes called Kleene's ``strong'' 3-valued logic:
+the strongest monotone extension of 2-valued logic.
+All connectives are monotone and implementable
+(assuming parallel evaluation).
+
+
+\subsection{{\L}ukasiewicz}
+
+\begin{center}
+\begin{tabular}{|c|ccc|}
+\hline
+   $\land$& 0 & 1 & $\bot$
+\\ \hline
+   0      & 0 & 0 & 0
+\\ 1      & 0 & 1 & $\bot$
+\\ $\bot$ & 0 & $\bot$ & $\bot$
+\\ \hline
+\end{tabular}
+\hfil
+\begin{tabular}{|c|ccc|}
+\hline
+   $\lor$ & 0 & 1 & $\bot$
+\\ \hline
+   0      & 0 & 1 & $\bot$
+\\ 1      & 1 & 1 & 1
+\\ $\bot$ & $\bot$ & 1 & $\bot$
+\\ \hline
+\end{tabular}
+\hfil
+\begin{tabular}{|c|c|}
+\hline
+   $\neg$ &
+\\ \hline
+   0      & 1
+\\ 1      & 0
+\\ $\bot$ & $\bot$
+\\ \hline
+\end{tabular}
+\hfil
+\begin{tabular}{|c|ccc|}
+\hline
+   $\impl$ & 0 & 1 & $\bot$
+\\ \hline
+   0      & 1 & 1 & 1
+\\ 1      & 0 & 1 & $\bot$
+\\ $\bot$ & $\bot$ & 1 & 1
+\\ \hline
+\end{tabular}
+\end{center}
+%
+One change only:
+Now $\bot \impl \bot \equiv 1$.
+
+This logic is not very suitable for a programming language,
+as some connectives are not monotone.
+That is, the logic is not implementable, even with unbounded parallelism.
+However, it is sometimes considered attractive because $p \biim p$ remains
+a tautology, unlike the $K_3$ case.
+
+
+\subsection{Kleene's ``weak'' logic}
+
+\begin{center}
+\begin{tabular}{|c|ccc|}
+\hline
+   $\land$& 0 & 1 & $\bot$
+\\ \hline
+   0      & 0 & 0 & $\bot$
+\\ 1      & 0 & 1 & $\bot$
+\\ $\bot$ & $\bot$ & $\bot$ & $\bot$
+\\ \hline
+\end{tabular}
+\hfil
+\begin{tabular}{|c|ccc|}
+\hline
+   $\lor$ & 0 & 1 & $\bot$
+\\ \hline
+   0      & 0 & 1 & $\bot$
+\\ 1      & 1 & 1 & $\bot$
+\\ $\bot$ & $\bot$ & $\bot$ & $\bot$
+\\ \hline
+\end{tabular}
+\hfil
+\begin{tabular}{|c|c|}
+\hline
+   $\neg$ &
+\\ \hline
+   0      & 1
+\\ 1      & 0
+\\ $\bot$ & $\bot$
+\\ \hline
+\end{tabular}
+\hfil
+\begin{tabular}{|c|ccc|}
+\hline
+   $\impl$ & 0 & 1 & $\bot$
+\\ \hline
+   0      & 1 & 1 & $\bot$
+\\ 1      & 0 & 1 & $\bot$
+\\ $\bot$ & $\bot$ & $\bot$ & $\bot$
+\\ \hline
+\end{tabular}
+\end{center}
+%
+(This is exactly Bochvar's logic.)
+All connectives are strict (and therefore monotone).
+For example, $0 \impl \bot \equiv \bot$.
+Similarly $1 \lor \bot \equiv \bot \lor 1 \equiv \bot$.
+This does not seem so desirable.
+
+
+\subsection{Problems with strictness}
+
+Let $A \cap B = \emptyset$ and consider two (classical) predicates
+\[
+  \begin{array}{ll}
+     p : & A \fun \Bool
+  \\ q : & B \fun \Bool
+  \end{array}
+\]
+With a strict logic it seems impossible to define their union
+\[
+  r : (A \cup B) \fun \Bool
+\]
+Certainly the natural definition
+\[
+  r(x) \equiv (x \in A \impl p(x)) \land (x \in B \impl q(x))
+\]
+does not work.
+
+For another example, consider these statements:
+\begin{enumerate}
+\item
+$x > 0 \impl \sqrt{x} > 0$
+\item
+$x < 0 \impl \sqrt{x} < 0$
+\end{enumerate}
+In a strict logic these are equivalent!
+
+
+\subsection{McCarthy logic}
+
+McCarthy's logic~\cite{McCarthy:FormalBasis63}
+is like $K_3$, except that $\land$ and $\lor$
+are no longer commutative.
+So, for example $\bot \lor 1 \equiv \bot$, whereas in 
+$K_3$ the result is $1$.
+This is now the standard way of dealing with these connectives in
+programming languages.
+In McCarthy logic,
+connectives are monotone and \emph{sequentially} implementable.
+
+\subsection{Quantifiers}
+
+Let $\Id$ be a set of identifiers, $\Val$ a set of values,
+ranged over by identifiers, and let $\Tri = \{\bot,0,1\}$.
+Let
+\[
+\begin{array}{lcl}
+   \Env &=& \Id \fun \Val
+\\ \Pred &=& \Env \fun \Tri
+\end{array}
+\]
+The quantifiers $\exists, \forall : \Id \fun \Pred \fun \Pred$
+can be defined by
+\[
+  \qquote{\exists x(p)} = 
+    \left\{
+	\begin{array}{ll}
+           1 & \mbox{if, for some $v$, $p([x \mapsto v]e) \equiv 1$}
+        % \\   & \mbox{and, for all $v$, $p([x \mapsto v]e) \not\equiv \bot$}
+        \\ 0 & \mbox{if, for all $v$, $p([x \mapsto v]e) \equiv 0$}
+        \\ \bot & \mbox{otherwise}
+	\end{array}
+    \right.
+\]
+$\forall x(p) \equiv \neg \exists x (\neg p)$.
+
+\subsection{Free logic}
+
+A characteristic of \emph{free logic} is the (non-monotone)
+``definedness'' operator (see Priest~\cite{Priest08}).
+Discuss ``inner'' vs ``outer'' quantification?
+
+Free logic is used in LPF:
+
+\begin{center}
+\begin{tabular}{|c|c|}
+\hline
+   $\Delta$ &
+\\ \hline
+   0      & 1
+\\ 1      & 1
+\\ $\bot$ & 0
+\\ \hline
+\end{tabular}
+\end{center}
+%
+LPF also includes strong and weak equality.
+Barringer et al.~\cite{Barringer:ActaInf84}
+give a natural deduction-style proof system.
+(Say more about LPF.)
+
+
+\subsection{Blikle's view}
+
+(Not sure how to cite, maybe \cite{Blikle:VDM88,Konikowska:VDM88}.)
+A richer meta-language---introduce ``super-predicates'':
+
+\begin{center}
+\begin{tabular}{lcl}
+   Stronger than 
+	& $p \impl q$
+	& $Tp \subseteq Tq$
+\\ Weakly equivalent
+	& $p \biim q$
+	& $Tp = Tq$
+\\ Less defined than
+	& $p \sqsubseteq q$
+	& $Tp \subseteq Tq \land Fp \subseteq Fq$
+\\ Strongly equivalent
+	& $p \cong q$
+	& $Tp = Tq \land Fp = Fq$
+\end{tabular}
+\end{center}
+%
+In 2-valued logic, $\biim$, $\sqsubseteq$, and $\cong$ coincide.
+
+Here are some examples:
+\[
+\begin{array}{rcll}
+   x \geq 0 \land x > 4
+        & \cong
+        & x \geq 0 \land \sqrt{x} > 2
+	& 
+\\
+\\ x > 4
+        & \biim
+        & \sqrt{x} > 2
+	& \not\sqsubseteq, \not\cong
+\\
+\\ \sqrt{x} < 2
+        & \sqsubseteq
+        & x < 4
+	& \not\Leftrightarrow, \not\cong
+\\
+\\ x > 4
+        & \impl
+        & x > 3
+	& \not\sqsubseteq, \not\Leftrightarrow
+\end{array}
+\]
+
+
+\subsection{Gries and Schneider's objections to LPF}
+
+From Gries and Schneider~\cite{Gries:95}.
+
+The law of the excluded middle has gone: $p \lor \neq p$ is not valid.
+A consequence of $\bot \biim \bot$ not being valid is that $\biim$ is not
+associative.
+``For us, the logic is far too complicated for use.''
+The suggested solution is to stick with 2-valued logic by pretending that
+there are no non-denoting terms.
+Write ``$y/y = 1$'' instead as ``$y \not= 0 \impl y/y = 1$''.
+
+It seems clear that Gries and Schneider ask for too much.
+Of course the law of the excluded middle has to go.
+And would it really be preferable to consider, say,
+\[
+  n/0 = 42 \biim n/0 = 153
+\]
+valid?
+Owe's WS seems to maintain as many proof rules as one could 
+possibly hope for.  
+
+\section{Let's look at four-valued logic}
+
+\subsection{Hasse diagrams}
+
+Hasse diagrams for $\Tri$ and $\Quad$:
+
+\begin{pspicture}(0,0)(11,6)    % \showgrid
+  \rput[c](3,1){\rnode[c]{bot1}{$\bot$}}
+  \rput[c](1,3){\rnode[c]{F1}{0}}
+  \rput[c](5,3){\rnode[c]{T1}{1}}
+
+  \rput[c](9,1){\rnode[c]{bot2}{$\bot$}}
+  \rput[c](7,3){\rnode[c]{F2}{0}}
+  \rput[c](11,3){\rnode[c]{T2}{1}}
+  \rput[c](9,5){\rnode[c]{top}{$\top$}}
+
+  \rput[c](1,4.8){$\Tri$ :}
+  \rput[c](7,4.8){$\Quad$ :}
+
+  \ncline[linecolor=blue,nodesep=4pt]{bot1}{F1}
+  \ncline[linecolor=blue,nodesep=4pt]{bot1}{T1}
+
+  \ncline[linecolor=blue,nodesep=4pt]{bot2}{F2}
+  \ncline[linecolor=blue,nodesep=4pt]{bot2}{T2}
+  \ncline[linecolor=blue,nodesep=4pt]{F2}{top}
+  \ncline[linecolor=blue,nodesep=4pt]{T2}{top}
+\end{pspicture}
+
+\noindent
+The ordering on function spaces is naturally induced.
+For interpretations:
+$u \sqsubseteq u' \mbox{ iff } \forall x (u(x) \leq u'(x))$.
+For predicates:
+$p \sqsubseteq q \mbox{ iff } \forall u (p(u) \leq q(u))$.
+
+
+\subsection{Partial interpretations}
+
+Split the Herbrand base into formulas that are true,
+false, undefined.
+
+\begin{pspicture}(0,0)(11,6)     % \showgrid
+
+  \psframe[framearc=0.25](1,1)(8,5)
+  \pscircle(2.5,2.5){1.2}
+  \pscircle(6.5,3.5){1}
+  \rput[c](2,3){$u_t$}
+  \rput[c](6.8,3.8){$u_f$}
+
+\end{pspicture}
+
+\subsection{A Fitting-like semantics for logic programs}
+
+Let $\Her$ be the Herbrand base (for a given program).
+Let $u = (u_t, u_f)$ be an interpretation.
+Let $B = L_1 \land \dots \land L_n$ be a ground body.
+We say that $u$ makes $B$ true iff
+\[
+  \forall i \in \{1,\dots, n\} ( \forall A \in \Her (
+        (L_i = A \impl A \in u_t) \land
+        (L_i = \lnot A \impl A \in u_f)))
+\]
+%
+Similarly $u$ makes $B$ false iff
+\[
+  \exists i \in \{1,\dots, n\} ( \exists A \in \Her (
+        (L_i = A \land A \in u_f) \lor
+        (L_i = \lnot A \land A \in u_t)))
+\]
+%
+The \emph{immediate consequence function}
+$U_P$~\cite{Mar-Son:JLP92} is defined by
+$U_P(u)  = (u_t, u_f)$  where
+\[
+\begin{array}{l}
+ u_t = \{A \in \Her \mid \exists i \in I ( \exists
+        A \rightarrow B \in ground(P[i]) ( \mbox{$u$ makes $B$ true})) \} \\
+ u_f = \{A \in \Her \mid \forall i \in I ( \forall
+        A \rightarrow B \in ground(P[i]) ( \mbox{$u$ makes $B$ false})) \}
+\end{array}
+\]
+The semantics of program $P$ is $\lfp(U_P)$.
+Note that $U_P$ is monotone but not continuous.
+
+In four-valued logic, there may be fixed points of $U_P$ which are not 
+consistent.
+In fact, if there is more than one fixed point, then $\gfp(U_P)$ is
+inconsistent---it is the conflation of $\lfp(U_P)$~\cite{Mar-Son:JLP92}.
+There may be many consistent fixed points, but in general there is no
+unique greatest consistent fixed point (hence the concept of optimal
+or intrinsic fixed point).
+
+\subsection{Owe's WS}
+
+Owe~\cite{Owe:FAC93} suggests that the key to the preservation of useful 
+natural-deduction style rules is in the definition of ``consequence''
+($a$ and $b$ variable-free):
+
+\begin{center}
+\begin{tabular}{|c|ccc|}
+\hline
+   $a \vdash b$ & 0 & 1 & $\bot$
+\\ \hline
+   0      & v & v & v
+\\ 1      & i & v & i
+\\ $\bot$ & i & v & i
+\\ \hline
+\end{tabular}
+\end{center}
+%
+What characterises Owe's proposal is that, for logical consequence,
+a proposition $p$ is given
+different interpretations depending on whether it is found
+to the left or to the right of the turnstile.
+On the left, $p$ is taken to mean ``$\Delta(p) \impl p$'' (weak interpretation).
+On the right, $p$ is taken to mean ``$\Delta(p) \land p$'' (strong interpretation).
+
+This explains the name WS.
+Owe considers the other alternatives (SW, WW, SS), together with others,
+and points out that WS alone offers modus ponens and the deduction theorem,
+together with many other useful properties.
+Actually the SW, WW, SS, WS taxonomy seems to come from Beata Konikowska,
+but her analysis and conclusions differ from Owe's.
+Here are the tables for the four alternative ``consequences'':
+
+\begin{center}
+\begin{tabular}{|c|ccc|}
+\multicolumn{4}{c}{~}
+\\ \hline
+   SW & 0 & 1 & $\bot$
+\\ \hline
+   0      & v & v & v
+\\ 1      & i & v & v
+\\ $\bot$ & v & v & v
+\\ \hline
+\multicolumn{4}{c}{~}
+\end{tabular}
+\hfil
+\begin{tabular}{|c|ccc|}
+\multicolumn{4}{c}{~}
+\\ \hline
+   WW & 0 & 1 & $\bot$
+\\ \hline
+   0      & v & v & v
+\\ 1      & i & v & v
+\\ $\bot$ & i & v & v
+\\ \hline
+\multicolumn{4}{c}{~}
+\end{tabular}
+\hfil
+\begin{tabular}{|c|ccc|}
+\multicolumn{4}{c}{~}
+\\ \hline
+   SS & 0 & 1 & $\bot$
+\\ \hline
+   0      & v & v & v
+\\ 1      & i & v & i
+\\ $\bot$ & v & v & v
+\\ \hline
+\multicolumn{4}{c}{~}
+\end{tabular}
+\hfil
+\begin{tabular}{|c|ccc|}
+\multicolumn{4}{c}{~}
+\\ \hline
+   WS & 0 & 1 & $\bot$
+\\ \hline
+   0      & v & v & v
+\\ 1      & i & v & i
+\\ $\bot$ & i & v & i
+\\ \hline
+\multicolumn{4}{c}{~}
+\end{tabular}
+\end{center}
+%
+Compare with Naish's ``definitional'' arrow~\cite{Naish:TPLP06}:
+\begin{center}
+\begin{tabular}{|c|ccc|}
+\hline
+   $a \rightarrow b$ & 0 & 1 & $\bot$
+\\ \hline
+   0      & v & i & v
+\\ 1      & i & v & v
+\\ $\bot$ & i & i & v
+\\ \hline
+\end{tabular}
+\end{center}
+This $\rightarrow$ is the partial ordering given by the 
+Hasse diagram
+\begin{center}
+\begin{pspicture}(0,0)(6,4)    % \showgrid
+  \rput[c](3,3){\rnode[c]{bot1}{$\bot$}}
+  \rput[c](1,1){\rnode[c]{F1}{0}}
+  \rput[c](5,1){\rnode[c]{T1}{1}}
+  \ncline[linecolor=blue,nodesep=4pt]{bot1}{F1}
+  \ncline[linecolor=blue,nodesep=4pt]{bot1}{T1}
+\end{pspicture}
+\end{center}
+In other words, Naish's arrow is the information ordering, except
+that the table's $\bot$ is more naturally seem as a ``glut''.
+
+That takes us to the old discussion about Prolog's \verb!:-!,
+the problem of reading that as `if' in the presence of negation,
+Clark's solution and \emph{its} problems, in particular the fact
+that adding an innocent clause \verb!p :- ~p! to an otherwise
+useful program $P$ makes $P$ useless, well, inconsistent.
+The more natural choice is to allow for para-consistency, that
+is to use $\sqsupseteq$ instead of bi-implication in the Clark
+completion.
+
+\section{The need for four values in logic program semantics}
+
+Fitting's four-valued and three-valued logic semantics agree
+when we restrict attention to consistent truth values.
+In particular, the least fixed points of the respective
+operators are identical.
+
+Fitting presents the four-valued semantics for its elegance and
+unifying role.
+We provide two additional \emph{practical} arguments for why the four-valued
+logic is useful.
+It is not clear why one would invite paraconsistent logic in
+(better read Blair and Subrahmanain's paper on paraconsistent logic
+programming).
+Here are some reasons:
+\begin{enumerate}
+\item
+In \emph{program analysis} we work with approximate semantics.
+Abstract interpretation can be used, for example, to calculate,
+in finite time, supersets of (undecidable) sets of signed atomic 
+formulas that are consequences of a logic program.
+This typically leads to some formulas being signed both positively
+and negatively.
+\item
+In \emph{declarative debugging} we also work with paraconsistent
+logic, but for a different reason.
+A declarative debugger acts as a mediator between a machine that
+runes logic programs
+and a programmer, each with their own ideas about the intended
+behaviour of the program that is being scrutinised.
+To the machine, the program is satisfied by a number of interpretations,
+presumably all consistent.
+To the programmer there is an ``intended interpretation'', which, we argue,
+is usually paraconsistent.
+That is, there are atomic formulas for which the programmer can accept 
+either sign, T or F.
+The program is considered correct if this intended interpretation is
+a logical consequence of the model(s), for a suitable
+concept of logical consequence.
+\item
+In \emph{program specification/refinement} there is some use of
+paraconsistent logic it seems---can we translate any of that into
+a logic programming setting?
+\end{enumerate}
+
+\section{Thoughts}
+
+In some sense we ultimately seem to take things back to \emph{two} values,
+witness the concept of ``designated'' vs ``non-designated'' value.
+
+\bibliographystyle{plain}
+\bibliography{logic}
+
+\end{document}

@@ -1,25 +1,6 @@
+A major advantage of functional programming languages is that they allow for analysis and transformation based on "equational reasoning"; an idea that has deep roots in computing history. In his seminal Turing Award lecture from 1977, John Backus advocated the functional style over traditional "von Neumann" languages, citing algebraic program manipulation as a major selling point. Similar ideas were further expanded in the Bird-Meertens formalism, fondly known as "squiggol", yielding an elegant calculus for iterative program construction. The use of simple equational laws is very attractive, even if the presence of "undefined" values sometimes violate such laws: Danielsson et al. have shown that, in a precise sense, equational reasoning is still justified. In their words, "fast and loose reasoning is morally correct".
 
-A major advantage of functional programming languages is that they
-allow for analysis and transformation based on "equational reasoning".
-This type of reasoning underlies, for example, the beautiful calculus 
-for the construction of functional programs developed by the school of 
-"squiggolers". The use of simple equational laws is very attractive,
-even if the presence of "undefined" values sometimes violate such laws:
-Danielsson et al. have shown that, in a precise sense, equational
-reasoning is still justified.  In their words, "fast and loose reasoning
-is morally correct".
+There are, however, circumstances where programmer intent needs to be taken into account. Programmers routinely make tacit assumptions about what may or may not happen when a program runs, making liberal use of deliberate under-specification. For example, when coding a merge function we typically assume the arguments are sorted lists. The under-specification or "don't care" status of a computation is best seen as a dual to undefinedness. It can manifest itself during debugging, for example, when a programmer is required to judge the correctness of an expression that violates a precondition (such as merge applied to unsorted lists), and therefore has no particular intended meaning.
 
-There are, however, circumstances where programmer intent needs to be 
-taken into account. Programmers routinely make tacit assumptions about
-what may or may not happen when a program runs, making liberal use of 
-deliberate under-specification. The under-specification or "don't care" 
-status of a value is best seen as a dual to undefinedness. It can 
-manifest itself during the use of a declarative debugging tool, for
-example, when a programmer is confronted with an unexpected expression 
-whose value is contentious.
-
-We argue that in the context of a "programmer-intended semantics"
-which is usually partial, certain kinds of reasoning with equality is
-inappropriate and that equality should instead be replaced by a partial
-ordering of values taking "don't care" into account.
+We argue that, in the context of a "programmer-intended semantics" which is usually partial, certain kinds of reasoning with equality are inappropriate and that equality should instead be replaced by a partial ordering of values taking "don't care" into account. In our presentation we aim to explain what goes wrong with naive equational reasoning in the presence of under-specification, how it can be adapted to avoid these pitfalls, and the influence on how we think about our code and design programming environments, including tools for testing, debugging and verification.
 
